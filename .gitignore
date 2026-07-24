@@ -1,0 +1,22 @@
+# Entorno virtual de Python (cada usuario crea el suyo con instalar.sh)
+venv/
+
+# Historial de búsquedas (datos personales del usuario, no del proyecto)
+historial/
+
+# Archivos temporales de Python
+__pycache__/
+*.pyc
+
+# Resultados generados por el uso de la app (se regeneran cada vez)
+literatura.csv
+literatura.ris
+literatura.bib
+resumenes.md
+analisis_imrad.md
+analisis_imrad.txt
+analisis_imrad.docx
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
