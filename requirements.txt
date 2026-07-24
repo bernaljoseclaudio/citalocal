@@ -1,18 +1,3 @@
 streamlit
 requests
 python-docx
-
-
-literatura-cientifica/
-├── app.py
-├── core.py
-├── branding.py
-├── literatura.py
-├── requirements.txt
-├── assets/
-│   ├── logo.png
-│   └── icon.png
-├── historial/          (se crea sola al buscar)
-├── venv/               (no se sube a GitHub, se recrea con requirements.txt)
-├── iniciar.sh
-└── BuscadorLiteratura.desktop
