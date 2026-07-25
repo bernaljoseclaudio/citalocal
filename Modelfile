@@ -1,0 +1,13 @@
+FROM llama3.1:8b
+
+# Capas en GPU (de ~32 totales, 20 van a GPU y el resto a RAM)
+PARAMETER num_gpu 20
+
+# Contexto de 4096 tokens
+PARAMETER num_ctx 4096
+
+# Hilos de CPU para el offloading (i7 13va gen)
+PARAMETER num_thread 12
+
+# Temperatura baja para respetar instrucciones de formato
+PARAMETER temperature 0.2

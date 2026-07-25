@@ -14,7 +14,11 @@
 #   8) Exportación de archivos
 #   9) Historial local de búsquedas
 # =====================================================================
-
+# Copyright (C) 2025 jbnen3
+# Este programa es software libre: puedes redistribuirlo y/o modificarlo
+# bajo los términos de la Licencia Pública General de GNU (GPLv3),
+# publicada por la Free Software Foundation.
+# Ver el archivo LICENSE para más detalles.
 import os
 import re
 import csv
@@ -117,26 +121,35 @@ def resumir_con_ollama(texto, modelo=OLLAMA_MODEL):
 # =====================================================================
 # 4) CONECTORES A BASES DE DATOS CIENTÍFICAS (solo fuentes gratuitas)
 # =====================================================================
-def search_pubmed(query, max_results=MAX_RESULTS, year_from=None, year_to=None):
+def search_pubmed(query, max_results=MAX_RESULTS, year_from=None, year_to=None, excluir=None):
     base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-    params = {"db": "pubmed", "term": query, "retmax": max_results,
+
+    query_final = query
+    if excluir:
+        terminos_not = " NOT ".join(excluir)
+        query_final = f"{query} NOT ({terminos_not})"
+
+    params = {"db": "pubmed", "term": query_final, "retmax": max_results,
               "retmode": "json", "sort": "relevance"}
+
     if year_from or year_to:
         params["datetype"] = "pdat"
         params["mindate"] = str(year_from) if year_from else "1900"
         params["maxdate"] = str(year_to) if year_to else str(datetime.now().year)
+
     if NCBI_API_KEY:
         params["api_key"] = NCBI_API_KEY
+
     r = requests.get(f"{base}/esearch.fcgi", params=params, timeout=20)
     ids = r.json()["esearchresult"].get("idlist", [])
     if not ids:
         return []
+
     fparams = {"db": "pubmed", "id": ",".join(ids), "retmode": "xml"}
     if NCBI_API_KEY:
         fparams["api_key"] = NCBI_API_KEY
     r2 = requests.get(f"{base}/efetch.fcgi", params=fparams, timeout=20)
     return _parse_pubmed_xml(r2.text)
-
 
 def _parse_pubmed_xml(xml_text):
     root = ET.fromstring(xml_text)
@@ -336,7 +349,32 @@ def search_core(query, max_results=MAX_RESULTS):
             "authors": authors, "doi": it.get("doi") or ""
         })
     return results
+# =====================================================================
+# UNPAYWALL — Verificador de acceso abierto por DOI
+# =====================================================================
+UNPAYWALL_EMAIL = os.getenv("UNPAYWALL_EMAIL", "claudio.bernal@uabc.edu.mx")
 
+def verificar_unpaywall(doi):
+    """
+    Dado un DOI, consulta Unpaywall para saber si existe
+    una versión gratuita y legal del artículo completo.
+    Retorna la URL de acceso abierto o None si no existe.
+    """
+    if not doi:
+        return None
+    try:
+        url = f"https://api.unpaywall.org/v2/{doi}"
+        params = {"email": UNPAYWALL_EMAIL}
+        r = requests.get(url, params=params, timeout=10)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        if data.get("is_oa"):
+            best = data.get("best_oa_location") or {}
+            return best.get("url_for_pdf") or best.get("url")
+        return None
+    except Exception:
+        return None
 
 TODAS_LAS_FUENTES = {
     "PubMed": search_pubmed,
@@ -371,7 +409,7 @@ def deduplicar(resultados):
 def buscar_literatura(query, max_results=MAX_RESULTS, fuentes_activas=None,
                        year_from=None, year_to=None,
                        generar_resumen=True, modelo=OLLAMA_MODEL,
-                       progreso_callback=None):
+                       excluir=None, progreso_callback=None):
     if fuentes_activas is None:
         fuentes_activas = list(TODAS_LAS_FUENTES.keys())
 
@@ -396,12 +434,21 @@ def buscar_literatura(query, max_results=MAX_RESULTS, fuentes_activas=None,
         time.sleep(PAUSA)
 
     todos = deduplicar(todos_raw)
+    if excluir:
+        todos = [
+            r for r in todos
+            if not any(
+                term.lower() in (r.get("title", "") + " " + r.get("abstract", "")).lower()
+                for term in excluir
+            )
+        ]
     todos = [r for r in todos if _en_rango(r["year"], year_from, year_to)]
 
     if generar_resumen:
         for i, r in enumerate(todos):
             log(f"Resumiendo [{i+1}/{len(todos)}]: {r['title'][:50]}")
             r["resumen"] = resumir_con_ollama(r["abstract"], modelo)
+            r["url_oa"] = verificar_unpaywall(r.get("doi", ""))
         log("Listo.")
 
     return todos
@@ -417,26 +464,46 @@ def buscar_literatura(query, max_results=MAX_RESULTS, fuentes_activas=None,
 #                más grande/capaz, y se fuerza estilo narrativo con
 #                reglas estrictas para evitar que copie las viñetas.
 # =====================================================================
-PLANTILLA_NARRATIVA = """Eres un redactor académico experto en español. A continuación tienes fragmentos de análisis (algunos en viñetas) sobre "{tema}", extraídos de artículos científicos.
+PLANTILLA_NARRATIVA = """Eres un investigador científico senior y redactor académico en español con 20 años de experiencia. Tu tarea es redactar una síntesis narrativa en formato IMRAD sobre "{tema}".
 
-Tu tarea: redactar una síntesis en formato IMRAD usando PÁRRAFOS NARRATIVOS COMPLETOS.
+REGLAS OBLIGATORIAS — incumplirlas invalida tu respuesta:
+1. ESTILO: Escribe ÚNICAMENTE en prosa académica fluida, en párrafos completos y conectados.
+2. PROHIBIDO: viñetas, guiones, asteriscos, numeración, listas de cualquier tipo.
+3. CITAS: cada afirmación importante debe ir acompañada de su cita en formato (Apellido, año). Ejemplo: "diversos estudios han demostrado que el injerto mejora la resistencia (García, 2020; López, 2022)".
+4. AGRUPACIÓN: cuando varios autores dicen lo mismo, agrúpalos en una sola cita: (Autor1, año; Autor2, año).
+5. TRANSICIONES: conecta ideas con "asimismo", "por otro lado", "en este sentido", "cabe destacar que", "en contraste", "estos hallazgos sugieren que".
+6. SÍNTESIS: no resumas artículo por artículo — integra tendencias, consensos y contradicciones.
+7. PRECISIÓN: usa solo datos del material de referencia. No inventes autores ni cifras.
+8. EXTENSIÓN: mínimo 3 párrafos por sección, 600-800 palabras en total.
 
-Reglas estrictas (muy importantes):
-- NO copies las viñetas literalmente, conviértelas en prosa fluida.
-- NO uses listas, numeraciones ni símbolos de viñeta (•, -, *, 1., 2., etc.).
-- Conecta las ideas con conectores lógicos (además, sin embargo, en contraste, de manera similar, en consecuencia).
-- Usa exactamente estos subtítulos: ## Introducción, ## Métodos, ## Resultados, ## Discusión
-- Extensión total aproximada: 500-700 palabras.
+Usa exactamente estos encabezados y ningún otro:
+## Introducción
+## Métodos
+## Resultados
+## Discusión
 
-Fragmentos de análisis (material de referencia, NO copiar tal cual):
+Material de referencia con autores y años (usa estos datos para las citas):
 {combinado}
-"""
 
-PLANTILLA_ESTRUCTURADA = """A partir de los siguientes fragmentos de análisis sobre "{tema}", organiza un cuadro de síntesis en español, usando subtítulos ## Introducción, ## Métodos, ## Resultados, ## Discusión, y dentro de cada uno usa viñetas breves y claras (está permitido usar listas aquí).
+Escribe ahora la síntesis completa en párrafos narrativos con citas APA:"""
+PLANTILLA_ESTRUCTURADA = """Eres un redactor académico experto en español. Organiza una síntesis estructurada sobre "{tema}" usando los siguientes encabezados exactos:
 
-Fragmentos de análisis:
+## Introducción
+## Métodos
+## Resultados
+## Discusión
+
+REGLAS:
+1. Dentro de cada sección escribe primero 1-2 párrafos narrativos de contexto.
+2. Luego puedes usar viñetas SOLO para listar hallazgos específicos con datos concretos.
+3. Cada viñeta debe ser una oración completa con sujeto, verbo y dato.
+4. Conecta las secciones con frases de transición entre ellas.
+5. PROHIBIDO: repetir la misma idea en secciones diferentes.
+
+Material de referencia:
 {combinado}
-"""
+
+Escribe la síntesis estructurada:"""
 
 
 def generar_analisis_imrad(resultados, tema,
@@ -467,7 +534,7 @@ def generar_analisis_imrad(resultados, tema,
 
     for idx, lote in enumerate(lotes):
         texto_lote = "\n\n".join(
-            f"- {r['title']} ({r['year']}): {r.get('resumen') or r['abstract'][:400]}"
+            f"- {r['title']} ({', '.join(r['authors'][:2]) if r['authors'] else 'Autor desconocido'}, {r['year']}): {r.get('resumen') or r['abstract'][:400]}"
             for r in lote
         )
         prompt_lote = f"""Eres un asistente de investigación. A partir de los siguientes artículos científicos sobre "{tema}", extrae en español y en viñetas breves:
@@ -497,7 +564,7 @@ Artículos:
 
     log(f"Generando síntesis final (modelo: {modelo_final})...", len(lotes) / total_pasos)
     # Temperatura baja para que respete mejor las reglas de formato.
-    texto_final = ollama_generate(prompt_final, modelo_final, timeout=240, temperature=0.35)
+    texto_final = ollama_generate(prompt_final, modelo_final, timeout=300, temperature=0.20)
     log("Análisis completado.", 1.0)
     return texto_final
 
@@ -533,13 +600,14 @@ def exportar_bib(resultados, filename="literatura.bib"):
 
 
 def exportar_csv(resultados, filename="literatura.csv"):
-    with open(filename, "w", newline="", encoding="utf-8") as f:
+   with open(filename, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["Fuente", "Autores", "Año", "Título", "Revista", "DOI", "Resumen"])
+        w.writerow(["Fuente", "Autores", "Año", "Título", "Revista", "DOI", "Acceso Abierto", "Resumen"])
         for r in resultados:
             w.writerow([r["source"], "; ".join(r["authors"]), r["year"],
-                        r["title"], r["journal"], r["doi"], r.get("resumen", "")])
-
+                        r["title"], r["journal"], r["doi"],
+                        r.get("url_oa", "") or "No disponible",
+                        r.get("resumen", "")])
 
 def exportar_markdown(resultados, filename="resumenes.md", query=""):
     with open(filename, "w", encoding="utf-8") as f:
@@ -548,7 +616,7 @@ def exportar_markdown(resultados, filename="resumenes.md", query=""):
         for r in resultados:
             f.write(f"## {r['title']}\n")
             f.write(f"**Fuente:** {r['source']} | **Autores:** {'; '.join(r['authors'])}\n\n")
-            f.write(f"**Año:** {r['year']} | **Revista:** {r['journal']} | **DOI:** {r['doi']}\n\n")
+            f.write(f"**Año:** {r['year']} | **Revista:** {r['journal']} | **DOI:** {r['doi']} | **Acceso Abierto:** {r.get('url_oa', '') or 'No disponible'}\n\n")
             f.write(f"**Resumen:** {r.get('resumen','N/A')}\n\n---\n\n")
 
 

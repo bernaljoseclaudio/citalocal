@@ -93,10 +93,13 @@ with st.sidebar:
     with col2:
         anio_hasta = st.number_input("Año hasta", min_value=1950, max_value=2025,
                                       value=2025, disabled=INTERFAZ_BLOQUEADA)
-
     max_por_fuente = st.slider("Resultados máximos por fuente", 5, 50, 20,
-                                disabled=INTERFAZ_BLOQUEADA)
-
+                               disabled=INTERFAZ_BLOQUEADA)
+    terminos_excluir = st.text_input(
+        "Términos a excluir (separados por coma)",
+        placeholder="ej: skin, surgical, wound, transplant",
+        disabled=INTERFAZ_BLOQUEADA
+    )
     st.subheader("Fuentes a consultar")
     st.caption("Todas las fuentes disponibles son gratuitas y de acceso abierto.")
     fuentes_seleccionadas = []
@@ -107,8 +110,7 @@ with st.sidebar:
     if "CORE" in fuentes_seleccionadas:
         st.caption("CORE requiere una API key gratuita (variable CORE_API_KEY).")
 
-    generar_resumen = st.checkbox("Generar resúmenes con IA (Ollama)", value=True,
-                                   disabled=INTERFAZ_BLOQUEADA)
+    generar_resumen = False
 
     buscar = st.button("🔍 Buscar", type="primary", width="stretch",
                         disabled=INTERFAZ_BLOQUEADA)
@@ -143,11 +145,13 @@ if buscar and not INTERFAZ_BLOQUEADA:
         modelo_para_resumen = modelos_disponibles[0]
         estado = st.empty()
         with st.spinner("Buscando..."):
+            terminos = [t.strip() for t in terminos_excluir.split(",") if t.strip()]
             resultados = buscar_literatura(
                 query=tema_input, max_results=max_por_fuente,
                 fuentes_activas=fuentes_seleccionadas,
                 year_from=int(anio_desde), year_to=int(anio_hasta),
                 generar_resumen=generar_resumen, modelo=modelo_para_resumen,
+                excluir=terminos,
                 progreso_callback=lambda msg, frac=None: estado.text(msg)
             )
         st.session_state.resultados = resultados
@@ -171,8 +175,9 @@ if resultados:
     st.success(f"{len(resultados)} artículos únicos encontrados — Tema: *{st.session_state.tema}*")
 
     tabla = [{
-        "Fuente": r["source"], "Año": r["year"], "Título": r["title"],
-        "Revista": r["journal"], "DOI": r["doi"], "Resumen": r.get("resumen", "")
+        "Año": r["year"], "Título": r["title"],
+        "Revista": r["journal"], "DOI": r["doi"],
+        "Acceso Abierto": r.get("url_oa", "") or "No disponible"
     } for r in resultados]
     st.dataframe(tabla, width="stretch", height=400)
 
