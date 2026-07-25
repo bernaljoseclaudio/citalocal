@@ -101,11 +101,26 @@ with st.sidebar:
         disabled=INTERFAZ_BLOQUEADA
     )
     st.subheader("Fuentes a consultar")
-    st.caption("Todas las fuentes disponibles son gratuitas y de acceso abierto.")
+    st.caption("Todas las fuentes son gratuitas y de acceso abierto.")
+
+    GRUPOS_FUENTES = {
+        "🌐 Generales": ["PubMed", "EuropePMC", "Crossref", "SemanticScholar", "OpenAlex"],
+        "🌱 Agricultura / Veterinaria": ["AGRIS/FAO", "AGRICOLA/USDA", "DOAJ/MDPI"],
+        "💻 Tecnología / Ciencias exactas": ["arXiv"],
+        "📚 Educación / Ciencias sociales": ["ERIC/Educación", "SSRN"],
+        "📂 Repositorios abiertos": ["CORE"],
+    }
+
     fuentes_seleccionadas = []
-    for nombre in TODAS_LAS_FUENTES.keys():
-        if st.checkbox(nombre, value=True, disabled=INTERFAZ_BLOQUEADA, key=f"chk_{nombre}"):
-            fuentes_seleccionadas.append(nombre)
+    for grupo, fuentes_grupo in GRUPOS_FUENTES.items():
+        with st.expander(grupo, expanded=False):
+            for nombre in fuentes_grupo:
+                if nombre in TODAS_LAS_FUENTES:
+                    if st.checkbox(nombre, value=True,
+                                   disabled=INTERFAZ_BLOQUEADA,
+                                   key=f"chk_{nombre}"):
+                        if nombre not in fuentes_seleccionadas:
+                            fuentes_seleccionadas.append(nombre)
 
     if "CORE" in fuentes_seleccionadas:
         st.caption("CORE requiere una API key gratuita (variable CORE_API_KEY).")
@@ -121,17 +136,30 @@ with st.sidebar:
     if not recientes:
         st.caption("Aún no hay búsquedas guardadas.")
     else:
+        col_rec, col_del = st.columns([3, 1])
+        with col_del:
+            if st.button("🗑️ Borrar todo", width="stretch", disabled=INTERFAZ_BLOQUEADA):
+                import shutil
+                if os.path.exists("historial"):
+                    shutil.rmtree("historial")
+                st.rerun()
         for item in recientes:
             etiqueta_btn = f"{item['tema'][:28]}  ({item['total']} art.)"
-            if st.button(etiqueta_btn, key=item["path"], width="stretch",
-                         disabled=INTERFAZ_BLOQUEADA, help=item["fecha"]):
-                datos = cargar_busqueda(item["path"])
-                st.session_state.resultados = datos["resultados"]
-                st.session_state.tema = datos["tema"]
-                st.session_state.analisis_imrad = None
-                st.session_state.busy = False
-                st.session_state.done_locked = False
-                st.rerun()
+            col_b, col_x = st.columns([4, 1])
+            with col_b:
+                if st.button(etiqueta_btn, key=item["path"], width="stretch",
+                             disabled=INTERFAZ_BLOQUEADA, help=item["fecha"]):
+                    datos = cargar_busqueda(item["path"])
+                    st.session_state.resultados = datos["resultados"]
+                    st.session_state.tema = datos["tema"]
+                    st.session_state.analisis_imrad = None
+                    st.session_state.busy = False
+                    st.session_state.done_locked = False
+                    st.rerun()
+            with col_x:
+                if st.button("✕", key=f"del_{item['path']}", disabled=INTERFAZ_BLOQUEADA):
+                    os.remove(item["path"])
+                    st.rerun()
 
 
 # =====================================================================
