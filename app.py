@@ -139,10 +139,21 @@ with st.sidebar:
     else:
         col_rec, col_del = st.columns([3, 1])
         with col_del:
-                if st.button("🗑️", width="stretch", disabled=INTERFAZ_BLOQUEADA, help="Borrar todo el historial"):                import shutil
-                if os.path.exists("historial"):
+            if st.button("🗑️", width="stretch", disabled=INTERFAZ_BLOQUEADA, help="Borrar todo el historial"):
+                st.session_state.confirmar_borrar = True
+
+        if st.session_state.get("confirmar_borrar"):
+            st.warning("¿Seguro que quieres borrar todo el historial?")
+            col_si, col_no = st.columns(2)
+            with col_si:
+                if st.button("✅ Sí, borrar", key="confirmar_si"):
                     shutil.rmtree("historial")
-                st.rerun()
+                    st.session_state.confirmar_borrar = False
+                    st.rerun()
+            with col_no:
+                if st.button("❌ Cancelar", key="confirmar_no"):
+                    st.session_state.confirmar_borrar = False
+                    st.rerun()
         for item in recientes:
             etiqueta_btn = f"{item['tema'][:28]}  ({item['total']} art.)"
             col_b, col_x = st.columns([4, 1])
