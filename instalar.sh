@@ -26,14 +26,19 @@ if ! command -v python3 &> /dev/null; then
 fi
 echo "✅ Python encontrado: $(python3 --version)"
 
-# --- 2) Verificar/instalar python3-venv ---
+# --- 2) Verificar/instalar python3-venv (versión específica) ---
+PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 if ! python3 -c "import venv" &> /dev/null; then
-    echo "Instalando python3-venv (requiere tu contraseña)..."
+    echo "Instalando python3.${PYVER}-venv..."
     sudo apt update
-    sudo apt install python3-venv -y
+    sudo apt install python3.${PYVER}-venv -y
 fi
 
 # --- 3) Crear entorno virtual ---
+if [ -d "venv" ] && [ ! -f "venv/bin/activate" ]; then
+    echo "⚠️  Entorno virtual corrupto detectado. Eliminando y recreando..."
+    rm -rf venv
+fi
 if [ ! -d "venv" ]; then
     echo "Creando entorno virtual..."
     python3 -m venv venv
