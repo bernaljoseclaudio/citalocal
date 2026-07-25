@@ -84,8 +84,32 @@ def listar_modelos_ollama():
         return modelos if modelos else [OLLAMA_MODEL]
     except Exception:
         return [OLLAMA_MODEL]
-
-
+def ordenar_modelos_por_tamano():
+    """Devuelve (modelo_ligero, modelo_pesado) basándose en el tamaño real."""
+    try:
+        r = requests.get(f"{OLLAMA_API_URL}/api/tags", timeout=5)
+        modelos = r.json().get("models", [])
+        if not modelos:
+            return OLLAMA_MODEL, OLLAMA_MODEL
+        modelos.sort(key=lambda m: m.get("size", 0))
+        ligero = modelos[0]["name"]
+        pesado = modelos[-1]["name"]
+        return ligero, pesado
+    except Exception:
+        return OLLAMA_MODEL, OLLAMA_MODEL
+def ordenar_modelos_por_tamano():
+    """Devuelve (modelo_ligero, modelo_pesado) basándose en el tamaño real."""
+    try:
+        r = requests.get(f"{OLLAMA_API_URL}/api/tags", timeout=5)
+        modelos = r.json().get("models", [])
+        if not modelos:
+            return OLLAMA_MODEL, OLLAMA_MODEL
+        modelos.sort(key=lambda m: m.get("size", 0))
+        ligero = modelos[0]["name"]
+        pesado = modelos[-1]["name"]
+        return ligero, pesado
+    except Exception:
+        return OLLAMA_MODEL, OLLAMA_MODEL
 def ollama_generate(prompt, modelo=OLLAMA_MODEL, timeout=300, temperature=0.6):
     """
     Envía un texto (prompt) al modelo de IA local.

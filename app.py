@@ -279,17 +279,19 @@ if resultados:
                 "en párrafos, prueba con un modelo más grande en 'Modelo para redacción final', "
                 "o usa el estilo 'Estructurado' para aprovechar las viñetas de forma ordenada.")
         colm1, colm2 = st.columns(2)
+        from core import ordenar_modelos_por_tamano
+        _ligero, _pesado = ordenar_modelos_por_tamano()
+        _idx_ligero = modelos_disponibles.index(_ligero) if _ligero in modelos_disponibles else 0
+        _idx_pesado = modelos_disponibles.index(_pesado) if _pesado in modelos_disponibles else min(1, len(modelos_disponibles)-1)
+
         with colm1:
             modelo_lotes = st.selectbox("Modelo para análisis por lotes (rápido)",
-                                          options=modelos_disponibles,
-                                          index=modelos_disponibles.index("llama3.2:3b") if "llama3.2:3b" in modelos_disponibles else 0,
+                                          options=modelos_disponibles, index=_idx_ligero,
                                           disabled=INTERFAZ_BLOQUEADA)
         with colm2:
             modelo_final = st.selectbox("Modelo para redacción final (recomendado: uno más grande)",
-                                          options=modelos_disponibles,
-                                          index=modelos_disponibles.index("citalocal-quality:latest") if "citalocal-quality:latest" in modelos_disponibles else min(1, len(modelos_disponibles)-1),
+                                          options=modelos_disponibles, index=_idx_pesado,
                                           disabled=INTERFAZ_BLOQUEADA)
-
         estilo = st.radio("Estilo de redacción final",
                            options=["narrativo", "estructurado"],
                            format_func=lambda x: "Narrativo (párrafos)" if x == "narrativo" else "Estructurado (viñetas por sección)",
