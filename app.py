@@ -175,11 +175,27 @@ if resultados:
     st.success(f"{len(resultados)} artículos únicos encontrados — Tema: *{st.session_state.tema}*")
 
     tabla = [{
+        "✓": False,
+        "Área": r.get("area", "Otras áreas"),
         "Año": r["year"], "Título": r["title"],
         "Revista": r["journal"], "DOI": r["doi"],
         "Acceso Abierto": r.get("url_oa", "") or "No disponible"
     } for r in resultados]
-    st.dataframe(tabla, width="stretch", height=400)
+
+    tabla_editada = st.data_editor(
+        tabla,
+        column_config={
+            "✓": st.column_config.CheckboxColumn("Incluir", default=True),
+            "Acceso Abierto": st.column_config.LinkColumn("Acceso Abierto"),
+        },
+        use_container_width=True,
+        height=400,
+        hide_index=True
+    )
+    resultados_seleccionados = [
+        r for r, fila in zip(resultados, tabla_editada) if fila.get("✓", True)
+    ]
+    st.caption(f"{len(resultados_seleccionados)} de {len(resultados)} artículos seleccionados para el análisis.")
 
     exportar_csv(resultados)
     exportar_ris(resultados)
@@ -226,12 +242,13 @@ if resultados:
         colm1, colm2 = st.columns(2)
         with colm1:
             modelo_lotes = st.selectbox("Modelo para análisis por lotes (rápido)",
-                                          options=modelos_disponibles, index=0,
+                                          options=modelos_disponibles,
+                                          index=modelos_disponibles.index("llama3.2:3b") if "llama3.2:3b" in modelos_disponibles else 0,
                                           disabled=INTERFAZ_BLOQUEADA)
         with colm2:
             modelo_final = st.selectbox("Modelo para redacción final (recomendado: uno más grande)",
                                           options=modelos_disponibles,
-                                          index=min(1, len(modelos_disponibles)-1),
+                                          index=modelos_disponibles.index("citalocal-quality:latest") if "citalocal-quality:latest" in modelos_disponibles else min(1, len(modelos_disponibles)-1),
                                           disabled=INTERFAZ_BLOQUEADA)
 
         estilo = st.radio("Estilo de redacción final",
@@ -277,7 +294,7 @@ if resultados:
                     info_tiempo.text(f"⏱ Transcurrido: {formatear(transcurrido)}  |  Calculando...")
 
         analisis = generar_analisis_imrad(
-            resultados, st.session_state.tema,
+            resultados_seleccionados, st.session_state.tema,
             modelo_lotes=modelo_lotes, modelo_final=modelo_final,
             progreso_callback=callback_progreso, tamano_lote=tamano_lote,
             estilo=estilo, prompt_personalizado=prompt_personalizado

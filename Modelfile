@@ -1,7 +1,7 @@
 FROM llama3.1:8b
 
 # Capas en GPU (de ~32 totales, 20 van a GPU y el resto a RAM)
-PARAMETER num_gpu 20
+PARAMETER num_gpu 28
 
 # Contexto de 4096 tokens
 PARAMETER num_ctx 4096

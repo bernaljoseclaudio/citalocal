@@ -117,6 +117,36 @@ def resumir_con_ollama(texto, modelo=OLLAMA_MODEL):
               f"indicando objetivo, método y hallazgo principal:\n\n{texto}\n\nResumen:")
     return ollama_generate(prompt, modelo, timeout=90)
 
+def clasificar_articulo(titulo, abstract, modelo=OLLAMA_MODEL):
+    """
+    Clasifica un artículo en un área temática usando el modelo ligero.
+    Retorna una de las áreas predefinidas.
+    """
+    areas = [
+        "Agrícola/Veterinaria/Ambiental",
+        "Médica/Clínica",
+        "Ciencias básicas",
+        "Tecnología/Computación",
+        "Educación/Social",
+        "Economía",
+        "Jurídica",
+        "Otras áreas"
+    ]
+    texto = f"{titulo}. {abstract[:300]}"
+    prompt = f"""Clasifica el siguiente artículo científico en UNA SOLA de estas áreas:
+{chr(10).join(f"- {a}" for a in areas)}
+
+Artículo: {texto}
+
+Responde ÚNICAMENTE con el nombre exacto del área, sin explicación ni puntuación adicional."""
+
+    resultado = ollama_generate(prompt, modelo, timeout=60, temperature=0.1)
+    resultado = resultado.strip().strip(".-").strip()
+    for area in areas:
+        if area.lower() in resultado.lower():
+            return area
+    return "Otras áreas"
+
 
 # =====================================================================
 # 4) CONECTORES A BASES DE DATOS CIENTÍFICAS (solo fuentes gratuitas)
@@ -349,6 +379,121 @@ def search_core(query, max_results=MAX_RESULTS):
             "authors": authors, "doi": it.get("doi") or ""
         })
     return results
+
+# =====================================================================
+# AGRIS (FAO) — Base de datos agrícola internacional
+# =====================================================================
+def search_agris(query, max_results=MAX_RESULTS):
+    url = "https://agris.fao.org/agris-search/search.do"
+    params = {
+        "query": query,
+        "startRow": 0,
+        "format": "json",
+        "rows": max_results
+    }
+    try:
+        data = requests.get(url, params=params, timeout=15).json()
+    except Exception:
+        return []
+    results = []
+    for it in data.get("response", {}).get("docs", []):
+        authors = it.get("creatorPersonal", []) or []
+        results.append({
+            "source": "AGRIS/FAO",
+            "title": it.get("title", "") or "",
+            "abstract": it.get("abstract", "") or "",
+            "journal": it.get("hostTitle", "") or "",
+            "year": str(it.get("publicationDate", "") or "")[:4],
+            "authors": authors if isinstance(authors, list) else [authors],
+            "doi": it.get("identifier", "") or ""
+        })
+    return results
+
+
+# =====================================================================
+# AGRICOLA (USDA) — Base de datos agrícola de EE.UU.
+# =====================================================================
+def search_agricola(query, max_results=MAX_RESULTS):
+    url = "https://api.nal.usda.gov/agricola/search"
+    params = {
+        "query": query,
+        "max": max_results,
+        "format": "json"
+    }
+    try:
+        data = requests.get(url, params=params, timeout=15).json()
+    except Exception:
+        return []
+    results = []
+    for it in data.get("result", []):
+        results.append({
+            "source": "AGRICOLA/USDA",
+            "title": it.get("title", "") or "",
+            "abstract": it.get("abstract", "") or "",
+            "journal": it.get("journal", "") or "",
+            "year": str(it.get("year", "") or "")[:4],
+            "authors": it.get("author", []) or [],
+            "doi": it.get("doi", "") or ""
+        })
+    return results
+
+
+# =====================================================================
+# SSRN — Ciencias sociales y economía
+# =====================================================================
+def search_ssrn(query, max_results=MAX_RESULTS):
+    url = "https://api.ssrn.com/content/search"
+    params = {
+        "query": query,
+        "limit": max_results
+    }
+    try:
+        data = requests.get(url, params=params, timeout=15).json()
+    except Exception:
+        return []
+    results = []
+    for it in data.get("papers", []):
+        authors = [a.get("name", "") for a in it.get("authors", [])]
+        results.append({
+            "source": "SSRN",
+            "title": it.get("title", "") or "",
+            "abstract": it.get("abstract", "") or "",
+            "journal": "SSRN",
+            "year": str(it.get("date", "") or "")[:4],
+            "authors": authors,
+            "doi": it.get("doi", "") or ""
+        })
+    return results
+
+
+# =====================================================================
+# ERIC — Educación
+# =====================================================================
+def search_eric(query, max_results=MAX_RESULTS):
+    url = "https://api.ies.ed.gov/eric/"
+    params = {
+        "search": query,
+        "format": "json",
+        "rows": max_results,
+        "fields": "title,author,publicationdateyear,description,issn,doi"
+    }
+    try:
+        data = requests.get(url, params=params, timeout=15).json()
+    except Exception:
+        return []
+    results = []
+    for it in data.get("response", {}).get("docs", []):
+        authors = it.get("author", []) or []
+        results.append({
+            "source": "ERIC/Educación",
+            "title": it.get("title", "") or "",
+            "abstract": it.get("description", "") or "",
+            "journal": it.get("issn", "") or "",
+            "year": str(it.get("publicationdateyear", "") or ""),
+            "authors": authors if isinstance(authors, list) else [authors],
+            "doi": it.get("doi", "") or ""
+        })
+    return results
 # =====================================================================
 # UNPAYWALL — Verificador de acceso abierto por DOI
 # =====================================================================
@@ -385,6 +530,10 @@ TODAS_LAS_FUENTES = {
     "OpenAlex": search_openalex,
     "arXiv": search_arxiv,
     "CORE": search_core,
+    "AGRIS/FAO": search_agris,
+    "AGRICOLA/USDA": search_agricola,
+    "SSRN": search_ssrn,
+    "ERIC/Educación": search_eric,
 }
 
 _FUENTES_CON_FILTRO_ANIO = ("PubMed", "Crossref", "OpenAlex")
@@ -444,12 +593,11 @@ def buscar_literatura(query, max_results=MAX_RESULTS, fuentes_activas=None,
         ]
     todos = [r for r in todos if _en_rango(r["year"], year_from, year_to)]
 
-    if generar_resumen:
-        for i, r in enumerate(todos):
-            log(f"Resumiendo [{i+1}/{len(todos)}]: {r['title'][:50]}")
-            r["resumen"] = resumir_con_ollama(r["abstract"], modelo)
-            r["url_oa"] = verificar_unpaywall(r.get("doi", ""))
-        log("Listo.")
+    for i, r in enumerate(todos):
+        log(f"Clasificando y procesando [{i+1}/{len(todos)}]: {r['title'][:50]}")
+        r["area"] = clasificar_articulo(r.get("title", ""), r.get("abstract", ""), modelo)
+        r["url_oa"] = verificar_unpaywall(r.get("doi", ""))
+    log("Listo.")
 
     return todos
 

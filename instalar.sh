@@ -98,6 +98,58 @@ EOF
     echo "✅ Acceso directo creado en el Escritorio."
 fi
 
+# --- 8) Descargar modelos recomendados ---
+echo ""
+if command -v ollama &> /dev/null; then
+    echo "Verificando modelos recomendados para CitaLocal..."
+
+    if ollama list | grep -q "llama3.2:3b"; then
+        echo "✅ llama3.2:3b ya está instalado."
+    else
+        read -p "¿Descargar modelo rápido 'llama3.2:3b' (~2GB)? (s/n): " resp3
+        if [ "$resp3" = "s" ] || [ "$resp3" = "S" ]; then
+            ollama pull llama3.2:3b
+        fi
+    fi
+
+    if ollama list | grep -q "llama3.1:8b"; then
+        echo "✅ llama3.1:8b ya está instalado."
+    else
+        read -p "¿Descargar modelo de calidad 'llama3.1:8b' (~4.9GB)? (s/n): " resp4
+        if [ "$resp4" = "s" ] || [ "$resp4" = "S" ]; then
+            ollama pull llama3.1:8b
+        fi
+    fi
+
+    # --- 9) Crear modelo citalocal-quality ---
+    if ollama list | grep -q "citalocal-quality"; then
+        echo "✅ El modelo citalocal-quality ya existe."
+    else
+        echo "Creando modelo citalocal-quality (optimizado para síntesis IMRAD)..."
+        ollama create citalocal-quality -f ./Modelfile
+        echo "✅ Modelo citalocal-quality creado."
+    fi
+fi
+
+# --- 10) Crear acceso directo de escritorio ---
+chmod +x iniciar.sh
+DESKTOP_FILE="$HOME/Desktop/CitaLocal.desktop"
+if [ -d "$HOME/Desktop" ]; then
+    cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CitaLocal
+Comment=Buscador y sintetizador local de literatura científica
+Exec=bash -c "cd $(pwd) && ./iniciar.sh"
+Icon=$(pwd)/assets/icon.png
+Terminal=true
+Categories=Science;
+EOF
+    chmod +x "$DESKTOP_FILE"
+    echo "✅ Acceso directo creado en el Escritorio."
+fi
+
 echo ""
 echo "======================================"
 echo "   ✅ Instalación completada"

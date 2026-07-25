@@ -49,6 +49,39 @@ if errorlevel 1 (
     echo Ollama ya esta instalado.
 )
 
+REM --- 5) Descargar modelos recomendados ---
+where ollama >nul 2>&1
+if not errorlevel 1 (
+    echo.
+    echo Verificando modelos recomendados para CitaLocal...
+
+    ollama list | findstr "llama3.2:3b" >nul 2>&1
+    if errorlevel 1 (
+        set /p resp3="¿Descargar modelo rapido 'llama3.2:3b' (~2GB)? (s/n): "
+        if /i "%resp3%"=="s" ollama pull llama3.2:3b
+    ) else (
+        echo llama3.2:3b ya esta instalado.
+    )
+
+    ollama list | findstr "llama3.1:8b" >nul 2>&1
+    if errorlevel 1 (
+        set /p resp4="¿Descargar modelo de calidad 'llama3.1:8b' (~4.9GB)? (s/n): "
+        if /i "%resp4%"=="s" ollama pull llama3.1:8b
+    ) else (
+        echo llama3.1:8b ya esta instalado.
+    )
+
+    REM --- 6) Crear modelo citalocal-quality ---
+    ollama list | findstr "citalocal-quality" >nul 2>&1
+    if errorlevel 1 (
+        echo Creando modelo citalocal-quality...
+        ollama create citalocal-quality -f Modelfile
+        echo Modelo citalocal-quality creado.
+    ) else (
+        echo El modelo citalocal-quality ya existe.
+    )
+)
+
 echo.
 echo ======================================
 echo    Instalacion completada
