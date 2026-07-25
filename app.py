@@ -9,6 +9,7 @@
 # publicada por la Free Software Foundation.
 # Ver el archivo LICENSE para más detalles.
 import os
+import shutil
 import time
 import streamlit as st
 from core import (
@@ -138,8 +139,7 @@ with st.sidebar:
     else:
         col_rec, col_del = st.columns([3, 1])
         with col_del:
-            if st.button("🗑️ Borrar todo", width="stretch", disabled=INTERFAZ_BLOQUEADA):
-                import shutil
+                if st.button("🗑️", width="stretch", disabled=INTERFAZ_BLOQUEADA, help="Borrar todo el historial"):                import shutil
                 if os.path.exists("historial"):
                     shutil.rmtree("historial")
                 st.rerun()
