@@ -254,7 +254,40 @@ if resultados:
     with c4:
         with open("resumenes.md", "rb") as f:
             st.download_button("⬇️ Markdown", f, "resumenes.md", width="stretch", disabled=INTERFAZ_BLOQUEADA)
+# -------------------------------------------------------------
+    # ANÁLISIS BIBLIOMÉTRICO
+    # -------------------------------------------------------------
+    st.divider()
+    st.subheader("📊 Análisis bibliométrico")
+    st.caption("Figuras estáticas en PNG (300 DPI), listas para insertar en artículos científicos.")
 
+    from core import generar_bibliometria
+
+    if "figuras_biblio" not in st.session_state:
+        st.session_state.figuras_biblio = []
+
+    if st.button("📊 Generar análisis bibliométrico", width="stretch", disabled=INTERFAZ_BLOQUEADA):
+        with st.spinner("Generando figuras..."):
+            figuras = generar_bibliometria(resultados, tema=st.session_state.tema)
+        st.session_state.figuras_biblio = figuras if figuras else []
+        st.rerun()
+
+    if st.session_state.figuras_biblio:
+        cols = st.columns(3)
+        for i, fig_path in enumerate(st.session_state.figuras_biblio):
+            with cols[i % 3]:
+                st.image(fig_path, use_container_width=True, caption=os.path.basename(fig_path))
+        st.divider()
+        for fig_path in st.session_state.figuras_biblio:
+            with st.expander(f"🔍 {os.path.basename(fig_path)} — Ver en grande"):
+                st.image(fig_path, use_container_width=True)
+                with open(fig_path, "rb") as f:
+                    st.download_button(
+                        f"⬇️ Descargar {os.path.basename(fig_path)}",
+                        f, os.path.basename(fig_path),
+                        width="stretch", disabled=INTERFAZ_BLOQUEADA,
+                        key=f"dl_{os.path.basename(fig_path)}"
+                    )
     # -------------------------------------------------------------
     # ANÁLISIS IMRAD
     # -------------------------------------------------------------

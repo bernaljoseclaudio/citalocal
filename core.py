@@ -28,6 +28,11 @@ from datetime import datetime
 import requests
 import xml.etree.ElementTree as ET
 from docx import Document
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+from collections import Counter
 
 
 # =====================================================================
@@ -499,8 +504,7 @@ def search_eric(query, max_results=MAX_RESULTS):
         "search": query,
         "format": "json",
         "rows": max_results,
-        "fields": "title,author,publicationdateyear,description,issn,doi"
-    }
+        "fields": "title,author,publicationdateyear,description,source,doi"    }
     try:
         data = requests.get(url, params=params, timeout=15).json()
     except Exception:
@@ -512,7 +516,7 @@ def search_eric(query, max_results=MAX_RESULTS):
             "source": "ERIC/Educación",
             "title": it.get("title", "") or "",
             "abstract": it.get("description", "") or "",
-            "journal": it.get("issn", "") or "",
+            "journal": it.get("source", "") or "",
             "year": str(it.get("publicationdateyear", "") or ""),
             "authors": authors if isinstance(authors, list) else [authors],
             "doi": it.get("doi", "") or ""
@@ -868,3 +872,156 @@ def listar_busquedas_recientes(carpeta=HISTORIAL_DIR, limite=15):
 def cargar_busqueda(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+# =====================================================================
+# 10) ANÁLISIS BIBLIOMÉTRICO
+# =====================================================================
+BIBLIOMETRIA_DIR = "bibliometria"
+
+
+def _preparar_carpeta_biblio(carpeta=BIBLIOMETRIA_DIR):
+    os.makedirs(carpeta, exist_ok=True)
+    return carpeta
+
+
+def _extraer_palabras_clave(resultados):
+    """Extrae palabras significativas de títulos y abstracts."""
+    stopwords_es = {
+        "de", "la", "el", "en", "y", "los", "las", "del", "un", "una", "por",
+        "con", "para", "que", "se", "al", "es", "su", "no", "lo", "como",
+        "más", "pero", "sus", "le", "ha", "este", "entre", "sobre", "son",
+        "fue", "ser", "está", "desde", "todo", "esta", "sin", "también",
+        "sus", "ese", "eso", "muy", "ya", "hay", "dos", "así", "nos",
+        "the", "of", "and", "in", "to", "a", "is", "for", "on", "with",
+        "that", "was", "are", "by", "an", "be", "this", "from", "at", "or",
+        "were", "has", "its", "not", "but", "can", "had", "have", "been",
+        "which", "their", "these", "than", "other", "into", "our", "we",
+        "study", "results", "using", "between", "after", "through", "during",
+    }
+    texto = " ".join(
+        f"{r['title']} {r['abstract']}" for r in resultados
+    ).lower()
+    palabras = re.findall(r'[a-záéíóúñü]{4,}', texto)
+    return Counter(w for w in palabras if w not in stopwords_es)
+
+
+def fig_produccion_por_anio(resultados, carpeta=BIBLIOMETRIA_DIR):
+    """Fig 1: Producción científica por año."""
+    _preparar_carpeta_biblio(carpeta)
+    anios = Counter(str(r["year"])[:4] for r in resultados if r.get("year"))
+    anios = dict(sorted(anios.items()))
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.bar(anios.keys(), anios.values(), color="#3454A7")
+    ax.set_xlabel("Año de publicación")
+    ax.set_ylabel("Número de artículos")
+    ax.set_title("Producción científica por año")
+    ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    path = os.path.join(carpeta, "fig1_produccion_anio.png")
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+    return path
+
+
+def fig_top_autores(resultados, top=10, carpeta=BIBLIOMETRIA_DIR):
+    """Fig 2: Autores más productivos."""
+    _preparar_carpeta_biblio(carpeta)
+    todos = []
+    for r in resultados:
+        todos.extend(r.get("authors", []))
+    conteo = Counter(a.strip() for a in todos if a.strip())
+    top_n = conteo.most_common(top)
+    if not top_n:
+        return None
+    nombres, cantidades = zip(*top_n)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.barh(list(reversed(nombres)), list(reversed(cantidades)), color="#6C2EB5")
+    ax.set_xlabel("Número de artículos")
+    ax.set_title(f"Top {top} autores más productivos")
+    ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    plt.tight_layout()
+    path = os.path.join(carpeta, "fig2_top_autores.png")
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+    return path
+
+
+def fig_top_revistas(resultados, top=10, carpeta=BIBLIOMETRIA_DIR):
+    """Fig 3: Revistas más frecuentes."""
+    _preparar_carpeta_biblio(carpeta)
+    revistas = Counter(
+        (r["journal"] if isinstance(r["journal"], str) else r["journal"][0] if r["journal"] else "").strip()
+        for r in resultados
+        if r.get("journal") and (r["journal"] if isinstance(r["journal"], str) else r["journal"][0] if r["journal"] else "").strip()
+    )
+    top_n = revistas.most_common(top)
+    if not top_n:
+        return None
+    nombres, cantidades = zip(*top_n)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.barh(list(reversed(nombres)), list(reversed(cantidades)), color="#1F4E5F")
+    ax.set_xlabel("Número de artículos")
+    ax.set_title(f"Top {top} revistas más frecuentes")
+    ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    plt.tight_layout()
+    path = os.path.join(carpeta, "fig3_top_revistas.png")
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+    return path
+
+
+def fig_nube_palabras(resultados, carpeta=BIBLIOMETRIA_DIR):
+    """Fig 4: Nube de palabras clave."""
+    _preparar_carpeta_biblio(carpeta)
+    frecuencias = _extraer_palabras_clave(resultados)
+    if not frecuencias:
+        return None
+    wc = WordCloud(
+        width=1200, height=600, background_color="white",
+        colormap="viridis", max_words=80
+    ).generate_from_frequencies(frecuencias)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.imshow(wc, interpolation="bilinear")
+    ax.set_title("Palabras clave más frecuentes")
+    ax.axis("off")
+    plt.tight_layout()
+    path = os.path.join(carpeta, "fig4_nube_palabras.png")
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+    return path
+
+
+def fig_fuentes_consultadas(resultados, carpeta=BIBLIOMETRIA_DIR):
+    """Fig 5: Distribución por fuente de datos."""
+    _preparar_carpeta_biblio(carpeta)
+    fuentes = Counter(r["source"] for r in resultados if r.get("source"))
+    if not fuentes:
+        return None
+    nombres, cantidades = zip(*fuentes.most_common())
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.pie(cantidades, labels=nombres, autopct="%1.0f%%", startangle=140,
+           colors=["#3454A7", "#1F4E5F", "#6C2EB5", "#E8833A",
+                   "#2EAA5F", "#C4392D", "#4A90D9", "#8B5CF6"])
+    ax.set_title("Distribución por fuente de datos")
+    plt.tight_layout()
+    path = os.path.join(carpeta, "fig5_fuentes.png")
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+    return path
+
+
+def generar_bibliometria(resultados, tema="", carpeta=BIBLIOMETRIA_DIR):
+    """Genera todas las figuras y devuelve lista de rutas."""
+    figuras = []
+    for fn in (fig_produccion_por_anio, fig_top_autores, fig_top_revistas,
+               fig_nube_palabras, fig_fuentes_consultadas):
+        try:
+            if fn in (fig_top_autores, fig_top_revistas):
+                path = fn(resultados, top=10, carpeta=carpeta)
+            else:
+                path = fn(resultados, carpeta=carpeta)
+            if path:
+                figuras.append(path)
+        except Exception:
+            continue
+    return figuras
